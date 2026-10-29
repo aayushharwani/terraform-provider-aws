@@ -10,6 +10,7 @@ import (
 
 	"github.com/YakDriver/regexache"
 	awstypes "github.com/aws/aws-sdk-go-v2/service/storagegateway/types"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -831,6 +832,14 @@ func TestAccStorageGatewaySMBFileShare_cacheAttributes(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "cache_attributes.0.cache_stale_timeout_in_seconds", "300"),
 				),
 			},
+			{
+				Config: testAccSMBFileShareConfig_cacheAttributes(rName, 0),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckSMBFileShareExists(ctx, t, resourceName, &smbFileShare),
+					resource.TestCheckResourceAttr(resourceName, "cache_attributes.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "cache_attributes.0.cache_stale_timeout_in_seconds", "0"),
+				),
+			},
 		},
 	})
 }
@@ -1506,4 +1515,18 @@ resource "aws_storagegateway_smb_file_share" "test" {
   case_sensitivity = %[1]q
 }
 `, option))
+}
+
+func TestSMBFileShareCacheStaleTimeoutValidation(t *testing.T) {
+	t.Parallel()
+
+	elem := tfstoragegateway.ResourceSMBFileShare().SchemaMap()["cache_attributes"].Elem.(*schema.Resource)
+	validateFunc := elem.Schema["cache_stale_timeout_in_seconds"].ValidateFunc
+
+	for v, valid := range map[int]bool{-1: false, 0: true, 1: false, 299: false, 300: true, 2592000: true, 2592001: false} {
+		_, errs := validateFunc(v, "cache_stale_timeout_in_seconds")
+		if got := len(errs) == 0; got != valid {
+			t.Errorf("cache_stale_timeout_in_seconds = %d: valid = %t, want %t", v, got, valid)
+		}
+	}
 }
